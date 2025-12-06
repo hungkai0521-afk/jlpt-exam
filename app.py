@@ -1,152 +1,81 @@
 import os
-import json
-import re
-import time
-import google.generativeai as genai
-from flask import Flask, render_template, request, jsonify
-from concurrent.futures import ThreadPoolExecutor
-
-print("正在啟動 JLPT 系統 (Fail-Safe Mode)...")
+from flask import Flask, render_template, request, Response
+from functools import wraps
+from openai import OpenAI
 
 app = Flask(__name__)
 
-# ==========================================
-# 您的 API Key
-# ==========================================
-# 修改後 (請直接替換這段)
-import os
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") # 從雲端後台讀取密碼
+# --- 設定你的 API Key ---
+# 這裡會自動讀取 Render 或本機 .env 設定的環境變數
+api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=api_key)
 
-if not GEMINI_API_KEY:
-    raise ValueError("No GEMINI_API_KEY found in environment variables")
+# --- 安檢系統 (帳號密碼設定) ---
+# 你可以在這裡修改你想用的帳號與密碼
+USERNAME = 'BKF1105'
+PASSWORD = 'AQL0553'
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-2.5-flash')
+def check_auth(username, password):
+    """檢查帳號密碼是否正確"""
+    return username == USERNAME and password == PASSWORD
 
-# [備援] 如果 AI 完全掛點，回傳這個
-BACKUP_DATA = [
-    {
-        "type": "grammar",
-        "script": None,
-        "question_text": "【系統】AI 連線逾時，這是本地備援題目。請選 1 繼續。",
-        "options": ["繼續", "重試", "等待", "報錯"],
-        "correct_index": 0,
-        "explanation": "當您看到這題，代表網路連線不穩或 AI 生成太慢，系統自動啟動了備援機制防止卡死。"
-    }
-]
+def authenticate():
+    """驗證失敗時傳回 401 回應"""
+    return Response(
+        '無法驗證您的權限，請登入。\nCould not verify your access level for that URL.\n'
+        'You have to login with proper credentials', 401,
+        {'WWW-Authenticate': 'Basic realm="Login Required"'})
 
-@app.route('/')
+def requires_auth(f):
+    """裝飾器：應用於需要保護的路由"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
+        return f(*args, **kwargs)
+    return decorated
+
+# --- 主程式路由 ---
+
+@app.route('/', methods=['GET', 'POST'])
+@requires_auth  # <--- 這裡掛上了鎖頭，進入首頁前會要求登入
 def index():
-    return render_template('index.html')
-
-def clean_json_text(text):
-    text = re.sub(r'```json\s*', '', text)
-    text = re.sub(r'```\s*', '', text)
-    start = text.find('[')
-    end = text.rfind(']')
-    if start != -1 and end != -1:
-        return text[start : end + 1]
-    return text
-
-def generate_worker(params):
-    count = params['count']
-    level = params['level']
-    category = params['category']
-    
-    # [關鍵修改] 在 Prompt 中強制要求 "explanation" 使用繁體中文
-    if category == 'listening':
-        prompt = f"""
-        Create a JLPT {level} listening set.
-        1. Write a SHORT conversation (max 6 lines) using "A:" and "B:".
-        2. Create exactly 2 multiple-choice questions based on it.
-        3. **IMPORTANT: The "explanation" field MUST be in Traditional Chinese (繁體中文).**
+    result = None
+    if request.method == 'POST':
+        # 取得使用者在網頁輸入的主題 (如果有)
+        user_input = request.form.get('topic')
         
-        Output JSON Array:
-        [
-          {{
-            "type": "listening",
-            "script": "A: ...\\nB: ...", 
-            "question_text": "Question?",
-            "options": ["A", "B", "C", "D"],
-            "correct_index": 0,
-            "explanation": "..."
-          }}
-        ]
-        """
-    else:
-        prompt = f"""
-        Generate {count} JLPT {level} {category} multiple-choice questions.
-        Output JSON Array only.
-        Keys: "type", "script" (null), "question_text", "options", "correct_index", "explanation".
-        **IMPORTANT: The "explanation" field MUST be in Traditional Chinese (繁體中文).**
-        """
-    
-    try:
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.GenerationConfig(
-                temperature=0.7,
-                response_mime_type="application/json"
-            )
+        # 如果沒輸入，預設為 "隨機 N4 文法"
+        if not user_input:
+            user_input = "隨機出題"
+
+        # --- 這裡設定給 AI 的指令 (Prompt) ---
+        system_prompt = "你是一位專業的日文老師，專門教導 JLPT N4 檢定。"
+        user_message = (
+            f"請根據主題「{user_input}」，出 1 題 JLPT N4 等級的單選題。"
+            "格式要求：\n"
+            "1. 題目 (含漢字與假名)\n"
+            "2. 四個選項\n"
+            "3. 正確答案\n"
+            "4. 簡短解析 (繁體中文)\n"
+            "請直接給出題目內容，不要有多餘的開場白。"
         )
-        cleaned = clean_json_text(response.text)
-        return json.loads(cleaned)
-    except:
-        return []
 
-@app.route('/api/get-questions', methods=['POST'])
-def get_questions():
-    try:
-        data = request.json
-        category = data.get('category', 'mock')
-        count = data.get('count', 1)
-        level = data.get('level', 'N4')
+        try:
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo", # 或 gpt-4o-mini
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message}
+                ]
+            )
+            result = response.choices[0].message.content
+        except Exception as e:
+            result = f"發生錯誤：{str(e)}"
 
-        # 聽力題維持少量 (2題/組)，避免超時
-        if category == 'listening':
-            final_questions = generate_worker({'count': 2, 'level': level, 'category': category})
-        else:
-            # 其他題型多執行緒
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                f1 = executor.submit(generate_worker, {'count': count, 'level': level, 'category': category})
-                final_questions = f1.result()
-
-        if not final_questions:
-            return jsonify({"status": "success", "data": BACKUP_DATA})
-
-        return jsonify({"status": "success", "data": final_questions})
-
-    except Exception as e:
-        print(f"Error: {e}")
-        return jsonify({"status": "success", "data": BACKUP_DATA})
-
-@app.route('/api/analyze-weakness', methods=['POST'])
-def analyze_weakness():
-    try:
-        data = request.json
-        mistakes = data.get('mistakes', [])
-        
-        if not mistakes:
-            return jsonify({"status": "success", "analysis": "目前沒有錯題紀錄，表現完美！請繼續保持。"})
-
-        mistake_text = "\n".join([f"- Q: {m['question']} | Correct: {m['correctAnswer']} | User: {m['yourAnswer']}" for m in mistakes[:10]])
-
-        prompt = f"""
-        你是日語家教。學生今天做了 JLPT 練習，以下是他的錯題：
-        {mistake_text}
-
-        請用繁體中文，針對這些錯誤：
-        1. 總結 1 個主要弱點。
-        2. 給出 2 個具體的改善建議。
-        3. 語氣要簡潔、鼓勵且專業。不要廢話。
-        """
-
-        response = model.generate_content(prompt)
-        return jsonify({"status": "success", "analysis": response.text})
-
-    except Exception as e:
-        print(f"Analysis Error: {e}")
-        return jsonify({"status": "error", "analysis": "AI 分析暫時無法使用。"})
+    return render_template('index.html', result=result)
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000, threaded=True)
+    port = int(os.environ.get("PORT", 10000)) # Render 預設使用 10000 port
+    app.run(host='0.0.0.0', port=port)
