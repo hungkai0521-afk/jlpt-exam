@@ -6,7 +6,7 @@ from openai import OpenAI
 app = Flask(__name__)
 
 # --- 設定你的 API Key ---
-# 這裡會自動讀取 Render 或本機 .env 設定的環境變數
+# 這裡會自動讀取 Render 或本機 .env 設定的環境變數 
 api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key)
 
