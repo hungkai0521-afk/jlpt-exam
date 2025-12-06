@@ -1,0 +1,13 @@
+# .gitignore 內容範例
+
+# 虛擬環境 (如果有的話)
+venv/
+env/
+
+# Python 快取檔
+__pycache__/
+*.pyc
+
+# 敏感環境變數檔 (最重要的部分)
+.env
+.DS_Store

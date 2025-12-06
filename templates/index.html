@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>JLPT 智能模擬考</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <style>
+        body { background-color: #121212; color: #e0e0e0; font-family: sans-serif; padding-bottom: 120px; }
+        
+        .question-card { background-color: #1e1e1e; border: 1px solid #333; border-radius: 12px; padding: 20px; margin-top: 10px; min-height: 350px; position: relative; }
+        #q-content { display: block; } 
+
+        #q-number-header { font-size: 1.8rem; font-weight: 800; color: #ffc107; margin-bottom: 15px; border-bottom: 2px solid #444; padding-bottom: 10px; letter-spacing: 1px; }
+        
+        .btn-option { width: 100%; text-align: left; margin-bottom: 12px; padding: 15px; font-size: 1.1rem; background-color: #2c2c2c; border: 1px solid #444; color: #fff; }
+        .btn-option:active { background-color: #444; }
+        .btn-option.correct { background-color: #198754 !important; border-color: #198754; }
+        .btn-option.wrong { background-color: #dc3545 !important; border-color: #dc3545; }
+        
+        #audio-status { font-size: 1.1rem; color: #0dcaf0; min-height: 24px; margin-bottom: 10px; font-weight: bold; text-align: center; }
+        .status-male { color: #66b0ff !important; }
+        .status-female { color: #ff85a2 !important; }
+
+        #script-area { display: none; background: #2a2a2a; padding: 15px; border-radius: 8px; border-left: 3px solid #0dcaf0; margin-bottom: 20px; font-size: 0.95rem; color: #ccc; white-space: pre-wrap; line-height: 1.6; }
+        #explanation-area { display: none; background: #263828; border-left: 4px solid #4caf50; padding: 15px; margin-top: 15px; white-space: pre-wrap; margin-bottom: 20px; }
+        
+        .buffer-status { font-size: 0.8rem; color: #666; position: absolute; top: 10px; right: 10px; cursor: pointer; border: 1px solid transparent; padding: 2px 5px; border-radius: 4px; }
+        .buffer-status.active { color: #0dcaf0; }
+
+        #loading-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(30,30,30,0.98); z-index: 50; display: flex; flex-direction: column; justify-content: center; align-items: center; border-radius: 12px; padding: 20px; text-align: center; }
+        #joke-box { border: 1px dashed #666; padding: 15px; margin-top: 20px; background: #222; border-radius: 8px; max-width: 90%; }
+        
+        #start-screen, #category-screen { display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; text-align: center; }
+        #exam-view, #top-bar, #category-screen, #checkpoint-screen { display: none; }
+        
+        .level-btn, .cat-btn { width: 100%; margin-bottom: 15px; padding: 15px; font-size: 1.3rem; font-weight: bold; border-radius: 15px; text-transform: uppercase; border: none; color: white; }
+        
+        .level-n5 { background: #28a745; } .level-n4 { background: #17a2b8; } .level-n3 { background: #ffc107; color: black; } .level-n2 { background: #fd7e14; } .level-n1 { background: #6610f2; }
+        .cat-vocab { background-color: #e83e8c; } .cat-grammar { background-color: #6f42c1; } .cat-reading { background-color: #fd7e14; } .cat-listening { background-color: #20c997; } .cat-mock { background-color: #0d6efd; }
+
+        .stat-badge { font-size: 0.9rem; margin-right: 5px; }
+        .review-card { background-color: #2c2121; border: 1px solid #dc3545; border-radius: 8px; margin-bottom: 15px; text-align: left; }
+        .difficulty-btn { height: 60px; font-size: 1.1rem; margin-bottom: 10px; border-radius: 10px; }
+        
+        #retry-btn { display: none; margin-top: 20px; }
+
+        .modal-content { background-color: #1e1e1e; border: 1px solid #444; }
+        .modal-header { border-bottom: 1px solid #333; }
+        .modal-footer { border-top: 1px solid #333; }
+        .modal-card { background-color: #252525; border: 1px solid #444; margin-bottom: 20px; border-radius: 8px; overflow: hidden; }
+        .modal-card-header { background-color: #332d2d; padding: 10px 15px; border-bottom: 1px solid #444; color: #ff6b6b; font-weight: bold; }
+        .modal-card-body { padding: 15px; }
+    </style>
+</head>
+<body>
+
+<div id="start-screen">
+    <div class="container" style="max-width: 600px;">
+        <h1 class="mb-4 text-white fw-bold">JLPT 智能模擬考</h1>
+        
+        <div class="card bg-dark border-secondary mb-4 text-start">
+            <div class="card-header border-secondary text-warning fw-bold">
+                📊 本日戰況 (Daily Report)
+            </div>
+            <div class="card-body">
+                <div class="row text-center mb-3">
+                    <div class="col-4 border-end border-secondary">
+                        <h4 class="text-white" id="dash-total">0</h4>
+                        <small class="text-secondary">總題數</small>
+                    </div>
+                    <div class="col-4 border-end border-secondary">
+                        <h4 class="text-success" id="dash-acc">0%</h4>
+                        <small class="text-secondary">答對率</small>
+                    </div>
+                    <div class="col-4">
+                        <h4 class="text-danger" id="dash-mistakes">0</h4>
+                        <small class="text-secondary">錯誤</small>
+                    </div>
+                </div>
+                
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-danger btn-sm" onclick="showReviewModal()">
+                        📖 打開錯題詳解本 (全螢幕)
+                    </button>
+                </div>
+
+                <hr class="border-secondary">
+                
+                <p class="text-info mb-1 fw-bold">🤖 AI 弱點分析：</p>
+                <div id="ai-analysis-content" class="text-light small bg-black p-2 rounded">
+                    點擊下方按鈕開始分析...
+                </div>
+                <button class="btn btn-sm btn-primary w-100 mt-2" onclick="triggerAIAnalysis()" id="btn-analyze">
+                    ✨ 生成今日分析報告
+                </button>
+            </div>
+        </div>
+
+        <p class="text-secondary mb-3">請選擇挑戰等級</p>
+        <button class="level-btn level-n5" onclick="selectLevel('N5')">N5 入門</button>
+        <button class="level-btn level-n4" onclick="selectLevel('N4')">N4 基礎</button>
+        <button class="level-btn level-n3" onclick="selectLevel('N3')">N3 進階</button>
+        <button class="level-btn level-n2" onclick="selectLevel('N2')">N2 高階</button>
+        <button class="level-btn level-n1" onclick="selectLevel('N1')">N1 神級</button>
+        
+        <button class="btn btn-outline-danger btn-sm mt-4" onclick="clearDailyData()">🗑️ 清除今日紀錄</button>
+    </div>
+</div>
+
+<div class="modal fade" id="reviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg">
+        <div class="modal-content text-white">
+            <div class="modal-header">
+                <h5 class="modal-title text-warning fw-bold">📝 錯題詳解本</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="modal-review-body">
+                </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary w-100" data-bs-dismiss="modal">關閉</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="category-screen">
+    <h2 class="mb-4 text-white" id="cat-title">N4 題型選擇</h2>
+    <p class="text-secondary mb-4">您想練習哪一部分？</p>
+    <button class="cat-btn cat-vocab" onclick="startGame('vocabulary')">📖 文字・語彙</button>
+    <button class="cat-btn cat-grammar" onclick="startGame('grammar')">📐 文法・句型</button>
+    <button class="cat-btn cat-reading" onclick="startGame('reading')">📑 讀解 (短文)</button>
+    <button class="cat-btn cat-listening" onclick="startGame('listening')">🎧 聽力 (題組)</button>
+    <hr class="border-secondary w-100 my-3">
+    <button class="cat-btn cat-mock" onclick="startGame('mock')">🔥 綜合模擬測驗</button>
+    <button class="btn btn-outline-secondary mt-3" onclick="location.reload()">回上一頁</button>
+</div>
+
+<div class="container position-relative">
+    <div id="buffer-indicator" class="buffer-status" onclick="forceReset()" style="display:none;">● 準備中 (重置)</div>
+
+    <div id="top-bar" class="d-flex flex-column mt-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-outline-secondary btn-sm" onclick="goHome()">🏠</button>
+                <div>
+                    <span id="current-level-badge" class="badge bg-info me-1">N4</span>
+                    <span id="current-cat-badge" class="badge bg-secondary">綜合</span>
+                </div>
+            </div>
+            <div>
+                <span class="badge bg-success stat-badge" id="accuracy-display">率: 0%</span>
+                <span class="badge bg-warning text-dark border border-secondary stat-badge" id="q-num-display">Q1</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="exam-view">
+        <div class="question-card position-relative" id="q-card">
+            <div id="loading-overlay">
+                <div class="spinner-border text-success" role="status" style="width: 3rem; height: 3rem;"></div>
+                <p class="mt-3 text-white fw-bold" id="loading-msg">題庫生成中...</p>
+                <button id="retry-btn" class="btn btn-outline-light btn-sm" onclick="retryFetch()">🔄 點此重試連線</button>
+                <div id="joke-box">
+                    <p class="text-warning mb-1 fw-bold">🇯🇵 日文冷笑話</p>
+                    <p id="joke-text" class="text-white mb-1" style="font-size: 1.1rem;">...</p>
+                    <p id="joke-answer" class="text-secondary small mb-0">...</p>
+                </div>
+            </div>
+            
+            <div id="q-content">
+                <h2 id="q-number-header">Q1</h2>
+
+                <div id="audio-controls" class="mb-3" style="display:none;">
+                    <div id="audio-status"></div>
+                    <button class="btn btn-info w-100 mb-2 fw-bold" onclick="playDialogue()">🔊 播放對話 (Dialogue)</button>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-light flex-grow-1" onclick="playQuestionOnly()">🔉 僅聽問題</button>
+                        <button class="btn btn-outline-secondary" onclick="toggleScript()">👁️ 查看腳本</button>
+                    </div>
+                </div>
+
+                <div id="script-area"></div>
+                <div id="q-text" class="mb-4 fs-5" style="line-height: 1.6;">載入中...</div>
+                
+                <div id="options-container"></div>
+                <div id="explanation-area"></div>
+            </div>
+        </div>
+        
+        <div class="fixed-bottom p-3 bg-dark border-top border-secondary">
+            <button id="main-btn" class="btn btn-secondary w-100 py-3 fw-bold" disabled>
+                <span class="spinner-border spinner-border-sm me-2"></span>系統初始化...
+            </button>
+        </div>
+    </div>
+
+    <div id="checkpoint-screen">
+        <h2 class="mb-3 text-warning">🛑 階段檢核點</h2>
+        <div class="row text-center mb-4">
+            <div class="col-6">
+                <h3 id="cp-accuracy" class="text-white">0%</h3>
+                <small class="text-secondary">正確率</small>
+            </div>
+            <div class="col-6">
+                <h3 id="cp-score" class="text-white">0/10</h3>
+                <small class="text-secondary">本回得分</small>
+            </div>
+        </div>
+        <p class="text-secondary mb-4">錯題檢討報告：</p>
+        <div id="mistakes-container" class="mb-5"></div>
+
+        <div class="fixed-bottom p-3 bg-dark border-top border-secondary">
+            <div class="container">
+                <p class="text-white mb-2 text-center small">調整難度繼續：</p>
+                <div class="row g-2">
+                    <div class="col-4"><button class="btn btn-outline-success w-100 difficulty-btn" onclick="setDifficulty('easy')">太難<br>(Easy)</button></div>
+                    <div class="col-4"><button class="btn btn-outline-primary w-100 difficulty-btn" onclick="setDifficulty('normal')">剛好<br>(Normal)</button></div>
+                    <div class="col-4"><button class="btn btn-outline-danger w-100 difficulty-btn" onclick="setDifficulty('hard')">太簡單<br>(Hard)</button></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let INITIAL_BATCH = 1; 
+    let SAFETY_STOCK = 3;
+    let REORDER_QTY = 10; // [確認] 這裡維持 10 題補貨量
+    
+    let questionQueue = [];
+    let mistakesQueue = [];
+    let isFetching = false;
+    let weakPoints = [];
+    let currentDifficulty = 'normal';
+    
+    let targetLevel = 'N4'; 
+    let targetCategory = 'mock';
+    let selectedVoice = null;
+    let voiceList = [];
+    let voiceMale = null;
+    let voiceFemale = null;
+    
+    let totalAnswered = 0;
+    let correctCount = 0;
+    let setCounter = 0;
+    let subCounter = 0;
+    let lastScript = "";
+
+    let dailyStats = {
+        total: 0,
+        correct: 0,
+        mistakes: [] 
+    };
+
+    const jokes = [
+        { q: "パンダの好きな食べ物は何？", a: "パンだ！" },
+        { q: "イクラはいくら？", a: "鮭魚卵多少錢？" },
+        { q: "電話で話すバナナは？", a: "もしもし" },
+        { q: "布団が吹っ飛んだ！", a: "棉被飛走了！" },
+        { q: "猫が寝込んだ！", a: "貓咪睡著了！" }
+    ];
+
+    const LOCAL_BACKUP = {
+        type: "listening",
+        script: "A: 週末、何をしますか？\nB: 図書館へ行って、勉強します。\nA: そうですか。頑張ってください。",
+        question_text: "【備援】男の人は週末、どこへ行きますか？",
+        options: ["デパート", "図書館", "公園", "学校"],
+        correct_index: 1,
+        explanation: "這是本地備援題目。"
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadDailyStats();
+    });
+
+    function selectLevel(level) {
+        targetLevel = level;
+        document.getElementById('start-screen').style.display = 'none';
+        document.getElementById('category-screen').style.display = 'flex';
+        document.getElementById('cat-title').innerText = `${level} 題型選擇`;
+        initVoice();
+    }
+
+    function startGame(category) {
+        targetCategory = category;
+        document.getElementById('category-screen').style.display = 'none';
+        document.getElementById('top-bar').style.display = 'flex';
+        document.getElementById('exam-view').style.display = 'block';
+        document.getElementById('buffer-indicator').style.display = 'block';
+        
+        document.getElementById('current-level-badge').innerText = targetLevel;
+        const catMap = {'vocabulary':'文字語彙', 'grammar':'文法', 'reading':'讀解', 'listening':'聽力', 'mock':'綜合模擬'};
+        document.getElementById('current-cat-badge').innerText = catMap[category] || category;
+        
+        INITIAL_BATCH = 6; 
+        
+        if(category === 'listening') {
+            SAFETY_STOCK = 4; 
+            REORDER_QTY = 3;  
+        } else {
+            SAFETY_STOCK = 10; 
+            REORDER_QTY = 5; // [確認] 這裡維持 10 題
+        }
+        
+        setMainButtonState('loading', '正在建立題庫...');
+        initExam();
+    }
+
+    async function initExam() {
+        showLoading(true, `正在生成 ${targetLevel} ${targetCategory} 試卷...`);
+        mistakesQueue = [];
+        setCounter = 0;
+        subCounter = 0;
+        lastScript = "";
+        
+        await fetchBatch(INITIAL_BATCH);
+        
+        if(questionQueue.length > 0) {
+            renderQuestion();
+        } else {
+            useLocalBackup();
+        }
+    }
+
+    function retryFetch() {
+        document.getElementById('retry-btn').style.display = 'none';
+        document.getElementById('loading-msg').innerText = "正在重試連線...";
+        fetchBatch(targetCategory === 'listening' ? 2 : 5).then(() => {
+            if(questionQueue.length > 0) {
+                renderQuestion();
+            } else {
+                document.getElementById('loading-msg').innerText = "重試失敗，請檢查網路";
+                document.getElementById('retry-btn').style.display = 'block';
+            }
+        });
+    }
+
+    async function fetchBatch(count) {
+        if (isFetching) return; 
+        isFetching = true;
+        updateBufferStatus(true);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000); 
+
+        try {
+            const res = await fetch('/api/get-questions', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ 
+                    weak_points: weakPoints,
+                    difficulty: currentDifficulty,
+                    count: count,
+                    level: targetLevel,
+                    category: targetCategory
+                }),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            const result = await res.json();
+            
+            if(result.status === 'success' && Array.isArray(result.data)) {
+                questionQueue = questionQueue.concat(result.data);
+                console.log(`[入庫] ${result.data.length} 題`);
+            }
+        } catch(e) { 
+            console.error("連線錯誤:", e);
+        } finally { 
+            isFetching = false;
+            updateBufferStatus(false); 
+        }
+    }
+
+    function useLocalBackup() {
+        console.warn("啟動本地備援...");
+        questionQueue.push(JSON.parse(JSON.stringify(LOCAL_BACKUP)));
+        renderQuestion();
+    }
+
+    function renderQuestion() {
+        showLoading(false);
+        window.speechSynthesis.cancel();
+        document.getElementById('audio-status').innerText = "";
+
+        if (questionQueue.length === 0) {
+            showLoading(true, "庫存耗盡，補貨中...");
+            fetchBatch(REORDER_QTY).then(() => {
+                if(questionQueue.length > 0) {
+                    showLoading(false); 
+                    renderQuestion();
+                } else {
+                    useLocalBackup(); 
+                }
+            });
+            return;
+        }
+
+        const q = questionQueue.shift(); 
+        document.getElementById('q-content').dataset.currentQ = JSON.stringify(q);
+
+        let displayNum = "";
+        if (targetCategory === 'listening') {
+            if (q.script && q.script === lastScript) {
+                subCounter++;
+            } else {
+                setCounter++;
+                subCounter = 1;
+                lastScript = q.script; 
+            }
+            displayNum = `Dialogue ${setCounter}-${subCounter}`;
+        } else {
+            displayNum = `Q${totalAnswered + 1}`;
+        }
+        
+        const headerEl = document.getElementById('q-number-header');
+        if (headerEl) headerEl.innerText = displayNum;
+        
+        const badgeEl = document.getElementById('q-num-display');
+        if (badgeEl) badgeEl.innerText = displayNum;
+
+        document.getElementById('q-text').innerText = q.question_text;
+        
+        const scriptArea = document.getElementById('script-area');
+        scriptArea.innerText = q.script || "(無對話稿)";
+        scriptArea.style.display = 'none'; 
+
+        document.getElementById('explanation-area').style.display = 'none';
+        document.getElementById('explanation-area').innerText = q.explanation;
+        
+        const audioControls = document.getElementById('audio-controls');
+        if (targetCategory === 'listening' || q.type === 'listening') {
+            audioControls.style.display = 'block';
+        } else {
+            audioControls.style.display = 'none';
+        }
+
+        const container = document.getElementById('options-container');
+        container.innerHTML = '';
+        q.options.forEach((opt, idx) => {
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-option';
+            btn.innerText = opt;
+            btn.onclick = () => checkAnswer(btn, idx, q.correct_index);
+            container.appendChild(btn);
+        });
+
+        setMainButtonState('disabled', '請點擊選項作答');
+        
+        if (questionQueue.length <= SAFETY_STOCK) fetchBatch(REORDER_QTY);
+    }
+
+    function checkAnswer(btn, selectedIdx, correctIdx) {
+        setMainButtonState('active', '下一題 (Next)');
+        const mainBtn = document.getElementById('main-btn');
+        mainBtn.onclick = null; 
+        mainBtn.onclick = nextQuestion;
+
+        try {
+            const qData = JSON.parse(document.getElementById('q-content').dataset.currentQ);
+            const btns = document.querySelectorAll('.btn-option');
+            btns.forEach(b => b.disabled = true);
+
+            if (selectedIdx === correctIdx) {
+                btn.classList.add('correct');
+                correctCount++; 
+                dailyStats.correct++;
+            } else {
+                btn.classList.add('wrong');
+                btns[correctIdx].classList.add('correct');
+                const typeText = targetCategory;
+                if(!weakPoints.includes(typeText)) weakPoints.push(typeText);
+                
+                const mistakeObj = {
+                    question: qData.question_text,
+                    yourAnswer: qData.options[selectedIdx],
+                    correctAnswer: qData.options[correctIdx],
+                    explanation: qData.explanation
+                };
+                mistakesQueue.push(mistakeObj);
+                
+                dailyStats.mistakes.push({
+                    question: mistakeObj.question,
+                    yourAnswer: mistakeObj.yourAnswer,
+                    correctAnswer: mistakeObj.correctAnswer,
+                    explanation: mistakeObj.explanation 
+                });
+            }
+            
+            totalAnswered++; 
+            dailyStats.total++;
+            saveDailyStats();
+            updateStats();   
+
+            document.getElementById('explanation-area').style.display = 'block';
+            if (targetCategory === 'listening') document.getElementById('script-area').style.display = 'block';
+
+        } catch (e) {
+            console.error("CheckAnswer Error:", e);
+        }
+    }
+
+    function nextQuestion() {
+        const mainBtn = document.getElementById('main-btn');
+        mainBtn.disabled = true;
+        mainBtn.innerText = "載入中..."; 
+        mainBtn.onclick = null; 
+
+        if (totalAnswered > 0 && totalAnswered % 10 === 0) {
+            showCheckpoint();
+        } else {
+            renderQuestion(); 
+        }
+    }
+
+    function initVoice() {
+        if (!('speechSynthesis' in window)) return;
+        const setVoice = () => {
+            const voices = window.speechSynthesis.getVoices();
+            voiceList = voices.filter(v => v.lang === 'ja-JP' || v.name.includes('Japanese'));
+            voiceMale = voiceList.find(v => v.name.includes('Ichiro') || v.name.includes('Kenji') || v.name.includes('Male')) || voiceList[0];
+            voiceFemale = voiceList.find(v => v.name.includes('Haruka') || v.name.includes('Kyoko') || v.name.includes('Female') || v.name.includes('Google')) || voiceList[0];
+        };
+        window.speechSynthesis.onvoiceschanged = setVoice;
+        setVoice(); 
+    }
+
+    function playDialogue() {
+        window.speechSynthesis.cancel();
+        const scriptText = document.getElementById('script-area').innerText;
+        const lines = scriptText.split('\n').filter(line => line.trim() !== "");
+        playLine(lines, 0);
+    }
+
+    function playLine(lines, index) {
+        if (index >= lines.length) {
+            document.getElementById('audio-status').innerText = "";
+            return; 
+        }
+        const line = lines[index];
+        const statusDiv = document.getElementById('audio-status');
+        const cleanText = line.replace(/^[AB男女]\s?[:：]?\s?/, ""); 
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.lang = 'ja-JP';
+        
+        if (line.startsWith("A:") || line.startsWith("男")) {
+            utterance.voice = voiceMale;
+            utterance.pitch = (voiceMale === voiceFemale) ? 0.6 : 1.0; 
+            statusDiv.innerText = "👨 男 (A)";
+            statusDiv.className = "status-male";
+        } else if (line.startsWith("B:") || line.startsWith("女")) {
+            utterance.voice = voiceFemale;
+            utterance.pitch = (voiceMale === voiceFemale) ? 1.3 : 1.0;
+            statusDiv.innerText = "👩 女 (B)";
+            statusDiv.className = "status-female";
+        } else {
+            utterance.pitch = 1.0;
+            statusDiv.innerText = "🔊 旁白";
+            statusDiv.className = "";
+        }
+        utterance.onend = () => playLine(lines, index + 1);
+        window.speechSynthesis.speak(utterance);
+    }
+
+    function playQuestionOnly() {
+        window.speechSynthesis.cancel();
+        const text = document.getElementById('q-text').innerText;
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'ja-JP';
+        if (voiceFemale) utterance.voice = voiceFemale;
+        window.speechSynthesis.speak(utterance);
+    }
+
+    function toggleScript() {
+        const area = document.getElementById('script-area');
+        area.style.display = (area.style.display === 'none') ? 'block' : 'none';
+    }
+
+    function setMainButtonState(state, text) {
+        const btn = document.getElementById('main-btn');
+        btn.className = "btn w-100 py-3 fw-bold";
+        btn.onclick = null;
+        if (state === 'loading') {
+            btn.classList.add('btn-secondary');
+            btn.disabled = true;
+            btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>${text}`;
+        } else if (state === 'disabled') {
+            btn.classList.add('btn-secondary');
+            btn.disabled = true;
+            btn.innerText = text; 
+        } else if (state === 'active') {
+            btn.classList.add('btn-primary');
+            btn.disabled = false;
+            btn.innerText = text;
+        } else if (state === 'error') {
+            btn.classList.add('btn-danger');
+            btn.disabled = false; 
+            btn.innerText = text;
+            btn.onclick = () => location.reload();
+        }
+    }
+
+    function updateStats() {
+        const acc = totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0;
+        document.getElementById('accuracy-display').innerText = `率: ${acc}%`;
+        document.getElementById('accuracy-display').className = `badge stat-badge ${acc >= 80 ? 'bg-success' : (acc >= 60 ? 'bg-warning text-dark' : 'bg-danger')}`;
+        document.getElementById('score-display').innerText = `${correctCount}/${totalAnswered}`;
+    }
+
+    function showCheckpoint() {
+        document.getElementById('exam-view').style.display = 'none';
+        document.getElementById('checkpoint-screen').style.display = 'block';
+        document.querySelector('#exam-view .fixed-bottom').style.display = 'none';
+        const acc = totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0;
+        document.getElementById('cp-accuracy').innerText = `${acc}%`;
+        document.getElementById('cp-score').innerText = `${correctCount}/${totalAnswered}`;
+        const container = document.getElementById('mistakes-container');
+        container.innerHTML = '';
+        if (mistakesQueue.length === 0) {
+            container.innerHTML = `<div class="alert alert-success text-center"><h4>🎉 本回全對！</h4><p>實力超群，請繼續挑戰！</p></div>`;
+        } else {
+            mistakesQueue.forEach((m, idx) => {
+                const card = document.createElement('div');
+                card.className = 'review-card';
+                card.innerHTML = `
+                    <div class="review-header">錯題 #${idx + 1}</div>
+                    <div class="review-body">
+                        <p class="mb-2 text-white">${m.question}</p>
+                        <p class="text-danger mb-1">❌ ${m.yourAnswer}</p>
+                        <p class="text-success mb-2">✅ ${m.correctAnswer}</p>
+                        <hr class="border-secondary"><p class="small text-secondary mb-0">${m.explanation}</p>
+                    </div>`;
+                container.appendChild(card);
+            });
+        }
+    }
+
+    function setDifficulty(level) {
+        currentDifficulty = level;
+        mistakesQueue = []; 
+        document.getElementById('checkpoint-screen').style.display = 'none';
+        document.getElementById('exam-view').style.display = 'block';
+        document.querySelector('#exam-view .fixed-bottom').style.display = 'block';
+        setMainButtonState('loading', '載入中...');
+        renderQuestion();
+        fetchBatch(REORDER_QTY);
+    }
+
+    function showLoading(show, msg="處理中...") {
+        const overlay = document.getElementById('loading-overlay');
+        if(show) {
+            const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
+            document.getElementById('joke-text').innerText = randomJoke.q;
+            document.getElementById('joke-answer').innerText = randomJoke.a;
+            overlay.style.display = 'flex';
+            document.getElementById('loading-msg').innerText = msg;
+            document.getElementById('retry-btn').style.display = 'none';
+        } else {
+            overlay.style.display = 'none';
+        }
+    }
+
+    function updateBufferStatus(isLoading) {
+        const ind = document.getElementById('buffer-indicator');
+        if(isLoading) {
+            ind.innerText = `● 補貨中... (${questionQueue.length})`;
+            ind.classList.add('active');
+        } else {
+            ind.innerText = `● 庫存: ${questionQueue.length}`;
+            ind.classList.remove('active');
+        }
+    }
+
+    function forceReset() {
+        if(confirm("重置將清空所有數據並返回首頁，確定嗎？")) location.reload();
+    }
+
+    function loadDailyStats() {
+        const saved = localStorage.getItem('jlpt_daily_stats');
+        if (saved) {
+            dailyStats = JSON.parse(saved);
+        }
+        updateDashboardUI();
+    }
+
+    function saveDailyStats() {
+        localStorage.setItem('jlpt_daily_stats', JSON.stringify(dailyStats));
+        updateDashboardUI();
+    }
+
+    function updateDashboardUI() {
+        document.getElementById('dash-total').innerText = dailyStats.total;
+        document.getElementById('dash-mistakes').innerText = dailyStats.mistakes.length;
+        
+        const acc = dailyStats.total > 0 ? Math.round((dailyStats.correct / dailyStats.total) * 100) : 0;
+        document.getElementById('dash-acc').innerText = `${acc}%`;
+    }
+
+    function showReviewModal() {
+        const container = document.getElementById('modal-review-body');
+        if(dailyStats.mistakes.length === 0) {
+            container.innerHTML = '<p class="text-center text-secondary py-5">本日尚無錯題，太強了！繼續保持！👍</p>';
+        } else {
+            container.innerHTML = dailyStats.mistakes.map((m, i) => `
+                <div class="modal-card">
+                    <div class="modal-card-header">
+                        錯題 #${i + 1}
+                    </div>
+                    <div class="modal-card-body">
+                        <h5 class="text-white mb-3" style="line-height:1.5;">${m.question}</h5>
+                        
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <div class="p-2 border border-danger rounded text-danger bg-dark">
+                                    <small>你的答案</small><br>❌ ${m.yourAnswer}
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="p-2 border border-success rounded text-success bg-dark">
+                                    <small>正確答案</small><br>✅ ${m.correctAnswer}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="p-3 bg-dark rounded border border-secondary text-secondary small">
+                            <strong>💡 解析 (錯題分析)：</strong><br>
+                            ${m.explanation || "（舊紀錄無詳細解析，請做新題）"}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        const modal = new bootstrap.Modal(document.getElementById('reviewModal'));
+        modal.show();
+    }
+
+    function clearDailyData() {
+        if(confirm('確定要清除今天的學習紀錄嗎？')) {
+            dailyStats = { total: 0, correct: 0, mistakes: [] };
+            saveDailyStats();
+            document.getElementById('ai-analysis-content').innerText = "數據已清除。";
+        }
+    }
+
+    function goHome() {
+        if (confirm("確定要返回首頁嗎？目前的答題進度將會保存到本日戰況。")) {
+            location.reload(); 
+        }
+    }
+
+    async function triggerAIAnalysis() {
+        if (dailyStats.mistakes.length === 0) {
+            document.getElementById('ai-analysis-content').innerText = "沒有錯題，AI 無法分析喔！(真厲害)";
+            return;
+        }
+
+        const btn = document.getElementById('btn-analyze');
+        const content = document.getElementById('ai-analysis-content');
+        
+        btn.disabled = true;
+        btn.innerText = "⏳ AI 正在思考中...";
+        content.innerText = "正在連線 Gemini 進行診斷...";
+
+        try {
+            const res = await fetch('/api/analyze-weakness', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ mistakes: dailyStats.mistakes })
+            });
+            const result = await res.json();
+            content.innerText = result.analysis;
+        } catch (e) {
+            content.innerText = "分析失敗，請檢查網路。";
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "✨ 重新生成報告";
+        }
+    }
+</script>
+</body>
+</html>
